@@ -3080,7 +3080,9 @@ static int igraph_i_community_multilevel_step(
 
             if (RNG_UNIF01() < probability_q) {
             	/* With probability probability_q, allow perturbation even if there is no positive gain */
-            	new_id = (long int) VECTOR(links_community)[RNG_INTEGER(0, n-1)];
+            	long int j = RNG_INTEGER(0, n-1);
+            	new_id = (long int) VECTOR(links_community)[j];
+            	max_weight = VECTOR(links_weight)[j];
             } else {
 				/* Find new community to join with the best modification gain */
 				max_q_gain = 0;
