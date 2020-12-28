@@ -2953,6 +2953,10 @@ static int igraph_i_multilevel_shrink(igraph_t *graph, igraph_vector_t *membersh
  *     For each vertex it gives the ID of its community.
  * \param modularity The modularity of the partition is returned here.
  *     \c NULL means that the modularity is not needed.
+ * \param probability_p When a node can join more than one community with the same
+ *     change in modularity, ties are broken randomly with this probability.
+ * \param probability_q The probability to allow perturbation even if there is no
+ *     positive gain.
  * \return Error code.
  *
  * Time complexity: in average near linear on sparse graphs.
@@ -2961,7 +2965,9 @@ static int igraph_i_community_multilevel_step(
         igraph_t *graph,
         igraph_vector_t *weights,
         igraph_vector_t *membership,
-        igraph_real_t *modularity) {
+        igraph_real_t *modularity,
+		igraph_real_t probability_p,
+		igraph_real_t probability_q) {
 
     long int i, j;
     long int vcount = igraph_vcount(graph);
@@ -3069,26 +3075,35 @@ static int igraph_i_community_multilevel_step(
 
             /* debug("Remove %ld all: %lf Inside: %lf\n", i, -weight_all, -2*weight_inside + weight_loop); */
 
-            /* Find new community to join with the best modification gain */
-            max_q_gain = 0;
-            max_weight = weight_inside;
+            /* Find new community to join */
             n = igraph_vector_size(&links_community);
 
-            for (j = 0; j < n; j++) {
-                long int c = (long int) VECTOR(links_community)[j];
-                igraph_real_t w = VECTOR(links_weight)[j];
+            if (RNG_UNIF01() < probability_q) {
+            	/* With probability probability_q, allow perturbation even if there is no positive gain */
+            	long int j = RNG_INTEGER(0, n-1);
+            	new_id = (long int) VECTOR(links_community)[j];
+            	max_weight = VECTOR(links_weight)[j];
+            } else {
+				/* Find new community to join with the best modification gain */
+				max_q_gain = 0;
+				max_weight = weight_inside;
 
-                igraph_real_t q_gain =
-                    igraph_i_multilevel_community_modularity_gain(&communities,
-                            (igraph_integer_t) c,
-                            (igraph_integer_t) i,
-                            weight_all, w);
-                /* debug("Link %ld -> %ld weight: %lf gain: %lf\n", i, c, (double) w, (double) q_gain); */
-                if (q_gain > max_q_gain) {
-                    new_id = c;
-                    max_q_gain = q_gain;
-                    max_weight = w;
-                }
+				for (j = 0; j < n; j++) {
+					long int c = (long int) VECTOR(links_community)[j];
+					igraph_real_t w = VECTOR(links_weight)[j];
+
+					igraph_real_t q_gain =
+						igraph_i_multilevel_community_modularity_gain(&communities,
+								(igraph_integer_t) c,
+								(igraph_integer_t) i,
+								weight_all, w);
+					/* debug("Link %ld -> %ld weight: %lf gain: %lf\n", i, c, (double) w, (double) q_gain); */
+					if (q_gain > max_q_gain || (q_gain == max_q_gain && RNG_UNIF01() < probability_p /*break ties randomly*/)) {
+						new_id = c;
+						max_q_gain = q_gain;
+						max_weight = w;
+					}
+				}
             }
 
             /* debug("Added vertex %ld to community %ld (gain %lf).\n", i, new_id, (double) max_q_gain); */
@@ -3197,6 +3212,10 @@ static int igraph_i_community_multilevel_step(
  * \param modularity Numeric vector that will contain the modularity score
  *     after each level, if not \c NULL. It must be initialized and it
  *     will be resized accordingly.
+ * \param probability_p When a node can join more than one community with the same
+ *     change in modularity, ties are broken randomly with this probability.
+ * \param probability_q The probability to allow perturbation even if there is no
+ *     positive gain.
  * \return Error code.
  *
  * Time complexity: in average near linear on sparse graphs.
@@ -3206,7 +3225,8 @@ static int igraph_i_community_multilevel_step(
 
 int igraph_community_multilevel(const igraph_t *graph,
                                 const igraph_vector_t *weights, igraph_vector_t *membership,
-                                igraph_matrix_t *memberships, igraph_vector_t *modularity) {
+                                igraph_matrix_t *memberships, igraph_vector_t *modularity,
+								igraph_real_t probability_p, igraph_real_t probability_q) {
 
     igraph_t g;
     igraph_vector_t w, m, level_membership;
@@ -3249,7 +3269,7 @@ int igraph_community_multilevel(const igraph_t *graph,
         igraph_integer_t step_vcount = igraph_vcount(&g);
 
         prev_q = q;
-        IGRAPH_CHECK(igraph_i_community_multilevel_step(&g, &w, &m, &q));
+        IGRAPH_CHECK(igraph_i_community_multilevel_step(&g, &w, &m, &q, probability_p, probability_q));
 
         /* Were there any merges? If not, we have to stop the process */
         if (igraph_vcount(&g) == step_vcount || q < prev_q) {

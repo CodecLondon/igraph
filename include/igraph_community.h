@@ -218,7 +218,9 @@ DECLDIR int igraph_community_multilevel(const igraph_t *graph,
                                         const igraph_vector_t *weights,
                                         igraph_vector_t *membership,
                                         igraph_matrix_t *memberships,
-                                        igraph_vector_t *modularity);
+                                        igraph_vector_t *modularity,
+										igraph_real_t probability_p,
+										igraph_real_t probability_q);
 
 DECLDIR int igraph_community_leiden(const igraph_t *graph,
                                     const igraph_vector_t *edge_weights,
